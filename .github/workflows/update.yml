@@ -37,6 +37,9 @@ jobs:
           node-version: 20
 
       - name: Scrape (scheduled = news + all batch + check-updates; manual = выбор)
+        env:
+          SCRAPER_PROXY: ${{ secrets.SCRAPER_PROXY }}
+          HTTPS_PROXY: ${{ secrets.SCRAPER_PROXY }}
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then
             # 1) свежие раздачи — быстро (заодно проверяет обновления у

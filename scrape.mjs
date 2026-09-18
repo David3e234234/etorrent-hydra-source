@@ -90,25 +90,170 @@ const DEFAULT_HEADERS = {
   "Upgrade-Insecure-Requests": "1",
 };
 
-/** fetch с браузерным UA и таймаутом */
+import https from "node:https";
+import http from "node:http";
+import tls from "node:tls";
+import { URL } from "node:url";
+
+const PROXY =
+  process.env.HTTPS_PROXY ||
+  process.env.https_proxy ||
+  process.env.HTTP_PROXY ||
+  process.env.http_proxy ||
+  process.env.SCRAPER_PROXY ||
+  null;
+
+if (PROXY) {
+  const sanitized = PROXY.replace(/:[^:@]+@/, ":***@");
+  console.log(`[proxy] включен прокси: ${sanitized}`);
+}
+
+/** Внутренний запрос с поддержкой HTTP/HTTPS прокси (CONNECT tunneling) без npm-зависимостей */
+function rawRequest(url, { headers = {}, timeout = 30000 } = {}) {
+  const target = new URL(url);
+  const isHttps = target.protocol === "https:";
+
+  return new Promise((resolve, reject) => {
+    let timer;
+    const cleanup = () => {
+      if (timer) clearTimeout(timer);
+    };
+
+    const onResponse = (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        cleanup();
+        const nextUrl = new URL(res.headers.location, target).toString();
+        return rawRequest(nextUrl, { headers, timeout }).then(resolve, reject);
+      }
+      cleanup();
+      const chunks = [];
+      res.on("data", (c) => chunks.push(c));
+      res.on("end", () => {
+        const buf = Buffer.concat(chunks);
+        resolve({
+          ok: res.statusCode >= 200 && res.statusCode < 300,
+          status: res.statusCode,
+          headers: res.headers,
+          buffer: () => Promise.resolve(buf),
+          text: (enc = "utf-8") => Promise.resolve(buf.toString(enc)),
+        });
+      });
+    };
+
+    if (PROXY) {
+      const p = new URL(PROXY);
+      const isProxyHttps = p.protocol === "https:";
+      const proxyLib = isProxyHttps ? https : http;
+      const targetPort = target.port || (isHttps ? 443 : 80);
+
+      const connectReq = proxyLib.request({
+        host: p.hostname,
+        port: p.port || (isProxyHttps ? 443 : 80),
+        method: "CONNECT",
+        path: `${target.hostname}:${targetPort}`,
+        headers: {
+          Host: `${target.hostname}:${targetPort}`,
+          ...(p.username
+            ? {
+                "Proxy-Authorization":
+                  "Basic " +
+                  Buffer.from(
+                    decodeURIComponent(p.username) + ":" + decodeURIComponent(p.password)
+                  ).toString("base64"),
+              }
+            : {}),
+        },
+      });
+
+      if (timeout > 0) {
+        timer = setTimeout(() => {
+          connectReq.destroy(new Error(`Timeout connecting via proxy (${timeout}ms)`));
+        }, timeout);
+      }
+
+      connectReq.on("connect", (res, socket) => {
+        if (res.statusCode !== 200) {
+          cleanup();
+          socket.destroy();
+          return reject(new Error(`Proxy CONNECT failed: HTTP ${res.statusCode}`));
+        }
+
+        if (isHttps) {
+          const tlsSocket = tls.connect(
+            {
+              host: target.hostname,
+              socket,
+              servername: target.hostname,
+            },
+            () => {
+              const req = https.request(
+                target,
+                {
+                  headers,
+                  createConnection: () => tlsSocket,
+                },
+                onResponse
+              );
+              req.on("error", (err) => {
+                cleanup();
+                reject(err);
+              });
+              req.end();
+            }
+          );
+          tlsSocket.on("error", (err) => {
+            cleanup();
+            reject(err);
+          });
+        } else {
+          const req = http.request(
+            target,
+            {
+              headers,
+              createConnection: () => socket,
+            },
+            onResponse
+          );
+          req.on("error", (err) => {
+            cleanup();
+            reject(err);
+          });
+          req.end();
+        }
+      });
+
+      connectReq.on("error", (err) => {
+        cleanup();
+        reject(err);
+      });
+      connectReq.end();
+    } else {
+      const lib = isHttps ? https : http;
+      const req = lib.request(target, { headers }, onResponse);
+      if (timeout > 0) {
+        timer = setTimeout(() => {
+          req.destroy(new Error(`Timeout (${timeout}ms)`));
+        }, timeout);
+      }
+      req.on("error", (err) => {
+        cleanup();
+        reject(err);
+      });
+      req.end();
+    }
+  });
+}
+
+/** fetch текста с браузерным UA, таймаутом и поддержкой прокси */
 async function fetchText(url, { encoding = "utf-8", timeout = 30000, referer, headers = {} } = {}) {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), timeout);
-  try {
-    const res = await fetch(url, {
-      headers: {
-        ...DEFAULT_HEADERS,
-        ...(referer ? { Referer: referer } : {}),
-        ...headers,
-      },
-      signal: controller.signal,
-      redirect: "follow",
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
-    return Buffer.from(await res.arrayBuffer()).toString(encoding);
-  } finally {
-    clearTimeout(t);
-  }
+  const reqHeaders = {
+    ...DEFAULT_HEADERS,
+    ...(referer ? { Referer: referer } : {}),
+    ...headers,
+  };
+  const res = await rawRequest(url, { headers: reqHeaders, timeout });
+  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+  return res.text(encoding);
 }
 
 /**
@@ -355,15 +500,15 @@ async function loadSitemapGameUrls() {
 async function downloadTorrent(url) {
   for (let attempt = 0; attempt <= MAX_TORRENT_RETRIES; attempt++) {
     try {
-      const controller = new AbortController();
-      const t = setTimeout(() => controller.abort(), 60000);
-      const res = await fetch(url, {
-        headers: { "User-Agent": UA, Referer: BASE + "/" },
-        signal: controller.signal,
+      const res = await rawRequest(url, {
+        headers: {
+          "User-Agent": UA,
+          Referer: BASE + "/",
+        },
+        timeout: 60000,
       });
-      clearTimeout(t);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const buf = Buffer.from(await res.arrayBuffer());
+      const buf = await res.buffer();
       // Проверяем что это действительно bencode (начинается с d...e или цифры)
       const first = buf[0];
       if (buf.length < 50 || (first !== 0x64 && !(first >= 0x30 && first <= 0x39))) {
