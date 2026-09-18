@@ -76,17 +76,30 @@ const MAX_PAGES = pagesArgIdx !== -1 ? parseInt(args[pagesArgIdx + 1], 10) || 3 
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+const DEFAULT_HEADERS = {
+  "User-Agent": UA,
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+  "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+  "Sec-Ch-Ua": '"Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"',
+  "Sec-Ch-Ua-Mobile": "?0",
+  "Sec-Ch-Ua-Platform": '"Windows"',
+  "Sec-Fetch-Dest": "document",
+  "Sec-Fetch-Mode": "navigate",
+  "Sec-Fetch-Site": "same-origin",
+  "Sec-Fetch-User": "?1",
+  "Upgrade-Insecure-Requests": "1",
+};
+
 /** fetch с браузерным UA и таймаутом */
-async function fetchText(url, { encoding = "utf-8", timeout = 30000, referer } = {}) {
+async function fetchText(url, { encoding = "utf-8", timeout = 30000, referer, headers = {} } = {}) {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), timeout);
   try {
     const res = await fetch(url, {
       headers: {
-        "User-Agent": UA,
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
+        ...DEFAULT_HEADERS,
         ...(referer ? { Referer: referer } : {}),
+        ...headers,
       },
       signal: controller.signal,
       redirect: "follow",
@@ -269,7 +282,7 @@ async function loadCache() {
   }
 }
 
-/** Все страницы игр из sitemap'а сайта */
+/** Все страницы игр из sitemap'а сайта (с fallback'ом на обход страниц при 403/ошибке) */
 async function loadSitemapGameUrls() {
   const urls = new Set();
   process.stdout.write("sitemap news_pages.xml... ");
@@ -282,6 +295,60 @@ async function loadSitemapGameUrls() {
   } catch (e) {
     console.log(`ошибка: ${e.message}`);
   }
+
+  // Если sitemap заблокирован (например, Cloudflare 403 на GitHub Actions),
+  // пробуем sitemap.xml или запасной обход страниц каталога
+  if (!urls.size) {
+    process.stdout.write("пробуем sitemap.xml... ");
+    try {
+      const xml = await fetchText(`${BASE}/sitemap.xml`, { timeout: 60000 });
+      const found = [...xml.matchAll(/<loc>(.*?)<\/loc>/g)].map((m) => m[1]);
+      const subSitemaps = found.filter((u) => u.endsWith(".xml") && !u.endsWith("news_pages.xml"));
+      for (const sm of subSitemaps) {
+        try {
+          const subXml = await fetchText(sm, { timeout: 60000 });
+          const smGames = [...subXml.matchAll(/<loc>(.*?)<\/loc>/g)]
+            .map((m) => m[1])
+            .filter((u) => /\/\d+-[a-z0-9-]+\.html$/i.test(u));
+          smGames.forEach((u) => urls.add(u));
+        } catch {
+          /* игнор ошибок в под-sitemap */
+        }
+      }
+      console.log(`+${urls.size}`);
+    } catch (e) {
+      console.log(`ошибка: ${e.message}`);
+    }
+  }
+
+  // Если sitemap полностью заблокирован антиботом, собираем ссылки через пагинацию сайта
+  if (!urls.size) {
+    console.log("Sitemap недоступен, собираем ссылки через пагинацию сайта...");
+    try {
+      const firstHtml = await fetchText(`${BASE}/`);
+      const pageNums = [...firstHtml.matchAll(/\/page\/(\d+)\//g)].map((m) => parseInt(m[1], 10));
+      const maxPage = pageNums.length ? Math.max(...pageNums) : 1;
+      console.log(`Всего страниц каталога: ~${maxPage}`);
+
+      for (let p = 1; p <= maxPage; p++) {
+        const pageUrl = p === 1 ? `${BASE}/` : `${BASE}/page/${p}/`;
+        try {
+          const html = p === 1 ? firstHtml : await fetchText(pageUrl);
+          const links = extractGameLinks(html);
+          links.forEach((u) => urls.add(u));
+          if (p % 10 === 0 || p === maxPage) {
+            console.log(`  [пагинация] страница ${p}/${maxPage}: всего игр найдено ${urls.size}`);
+          }
+          if (p > 1) await sleep(500);
+        } catch (err) {
+          console.warn(`  [пагинация] ошибка на странице ${p}: ${err.message}`);
+        }
+      }
+    } catch (err) {
+      console.error(`  [пагинация] не удалось прочитать главную: ${err.message}`);
+    }
+  }
+
   return [...urls];
 }
 

@@ -53,16 +53,16 @@ jobs:
             node scrape.mjs --check-updates --updates-limit 1500 --refresh
             bash publish.sh "chore: check-updates sweep [skip ci]"
           else
-            case "${{ inputs.mode }}" in
+            case "${{ inputs.mode || 'all' }}" in
               news)
                 node scrape.mjs --pages 5
                 bash publish.sh "chore: scrape news pages [skip ci]" ;;
-              all)
-                node scrape.mjs --all --limit 1500
-                bash publish.sh "chore: scrape catalog batch [skip ci]" ;;
               check-updates)
                 node scrape.mjs --check-updates --updates-limit 4000 --refresh
                 bash publish.sh "chore: check-updates sweep [skip ci]" ;;
+              all|*)
+                node scrape.mjs --all --limit 1500
+                bash publish.sh "chore: scrape catalog batch [skip ci]" ;;
             esac
           fi
         # publish.sh внутри делает финальный коммит+push после каждой фазы,
