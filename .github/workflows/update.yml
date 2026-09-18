@@ -1,0 +1,72 @@
+name: Update erotorrent.json
+
+on:
+  schedule:
+    - cron: "0 3 * * *"   # обновление новинок каждый день в 03:00 UTC
+    - cron: "0 5 * * *"   # дозаливка каталога (--all) каждый день в 05:00 UTC
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Режим запуска"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - news
+          - check-updates
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-erotorrent
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350 # ~5ч50м: ниже лимита job в 6 часов
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Scrape (scheduled = news + all batch + check-updates; manual = выбор)
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            # 1) свежие раздачи — быстро (заодно проверяет обновления у
+            #    игр с этих страниц: отпечаток размер|дата|версия|название)
+            node scrape.mjs --pages 5
+            bash publish.sh "chore: scrape news pages [skip ci]"
+            # 2) порция каталога: до 1500 НОВЫХ игр за запуск (~1ч),
+            #    кэшированные пропускаются мгновенно, лимит не тратится
+            node scrape.mjs --all --limit 1500
+            bash publish.sh "chore: scrape catalog batch [skip ci]"
+            # 3) проверка обновлений у кэшированных игр: если на сайте у игры
+            #    изменился размер/дата/версия — ссылки перекачиваются.
+            #    1500 игр за запуск ≈ полный круг по каталогу (~5150) раз в ~3.5 недели
+            node scrape.mjs --check-updates --updates-limit 1500 --refresh
+            bash publish.sh "chore: check-updates sweep [skip ci]"
+          else
+            case "${{ inputs.mode }}" in
+              news)
+                node scrape.mjs --pages 5
+                bash publish.sh "chore: scrape news pages [skip ci]" ;;
+              all)
+                node scrape.mjs --all --limit 1500
+                bash publish.sh "chore: scrape catalog batch [skip ci]" ;;
+              check-updates)
+                node scrape.mjs --check-updates --updates-limit 4000 --refresh
+                bash publish.sh "chore: check-updates sweep [skip ci]" ;;
+            esac
+          fi
+        # publish.sh внутри делает финальный коммит+push после каждой фазы,
+        # поэтому отдельный шаг «Commit if changed» не нужен: данные сохраняются
+        # порциями и не теряются даже если job упадёт посередине.
+
+      - name: Summary
+        if: always()
+        run: echo "Done. See commits on main."
