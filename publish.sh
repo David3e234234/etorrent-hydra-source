@@ -21,7 +21,13 @@ if git diff --cached --quiet; then
   exit 0
 fi
 
-git commit -m "${1:-chore: update erotorrent.json} [skip ci]"
+MESSAGE="${1:-chore: update erotorrent.json}"
+# Добавляем [skip ci], только если его ещё нет в сообщении
+case "$MESSAGE" in
+  *"[skip ci"*) ;;
+  *) MESSAGE="$MESSAGE [skip ci]" ;;
+esac
+git commit -m "$MESSAGE"
 
 PUSHED=0
 for i in 1 2 3 4 5 6; do
