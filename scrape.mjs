@@ -353,19 +353,48 @@ function extractRelease(html) {
   const torrentMatch = block.match(
     /href="(https?:\/\/erotorrent\.org\/index\.php\?do=download&id=\d+)"/i
   );
-  const cloudMatches = [
+  const rawCloudUrls = [
     ...block.matchAll(/<a href="(https?:\/\/(?!erotorrent)[^"]+)"[^>]*data-ofga-link/gi),
   ].map((m) => m[1]);
 
-  // Оставляем только облака, которые Hydra умеет качать.
-  // Google Drive / mega.nz и прочее отбрасываем: Hydra отфильтровал бы
-  // весь релиз целиком, если бы такая ссылка попала в uris.
-  const cloudLinks = [];
-  for (const url of cloudMatches) {
+  // Запасные ссылки (например, "Запасная ссылка: PIXELDRAIN - ..."), которые сайт
+  // оформляет через DLE redirect: /index.php?do=go&url=<base64>
+  const dleMatches = [
+    ...block.matchAll(/(?:do=go&amp;url=|do=go&url=)([a-zA-Z0-9+/=]+)/gi),
+  ].map((m) => m[1]);
+
+  for (const b64 of dleMatches) {
     try {
-      const host = new URL(url).hostname;
-      if (SUPPORTED_CLOUD_HOSTS.includes(host)) cloudLinks.push(url);
-      else console.warn(`    [cloud] пропуск неподдерживаемого Hydra хостера: ${host}`);
+      const decoded = Buffer.from(decodeURIComponent(b64), "base64").toString("utf-8");
+      if (/^https?:\/\//i.test(decoded)) {
+        rawCloudUrls.push(decoded);
+      }
+    } catch {
+      /* игнор некорректного base64 */
+    }
+  }
+
+  // Оставляем только уникальные облака, которые Hydra умеет качать (например, pixeldrain /u/<id>).
+  // Google Drive / mega.nz / uploadhaven и прочее отбрасываем: Hydra отфильтрует
+  // весь релиз целиком, если неподдерживаемая ссылка попадёт в uris.
+  const cloudLinks = [];
+  const seenCloud = new Set();
+  for (const url of rawCloudUrls) {
+    try {
+      const parsed = new URL(url);
+      const host = parsed.hostname.toLowerCase();
+      // pixeldrain: поддерживается только файл /u/<id>, папки /l/ отбрасываем
+      if (host === "pixeldrain.com" && !parsed.pathname.startsWith("/u/")) {
+        continue;
+      }
+      if (SUPPORTED_CLOUD_HOSTS.includes(host)) {
+        if (!seenCloud.has(url)) {
+          seenCloud.add(url);
+          cloudLinks.push(url);
+        }
+      } else {
+        console.warn(`    [cloud] пропуск неподдерживаемого Hydra хостера: ${host}`);
+      }
     } catch {
       /* мусорная ссылка — игнор */
     }
