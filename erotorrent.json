@@ -2,6 +2,14 @@
   "name": "EroTorrent",
   "downloads": [
     {
+      "title": "Don't Breathe or They Might Hear",
+      "uris": [
+        "magnet:?xt=urn:btih:55f0a8bc4c00c6deb0c6dc95df6d0c387f027bef&dn=Don't%20Breathe%20or%20They%20Might%20Hear&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.demonii.com%3A1337%2Fannounce&tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce&tr=udp%3A%2F%2Fexodus.desync.com%3A6969%2Fannounce"
+      ],
+      "uploadDate": "2026-09-28 00:00",
+      "fileSize": "1.46 GB"
+    },
+    {
       "title": "Double Life: Escort Secrets",
       "uris": [
         "magnet:?xt=urn:btih:293e1fefb75737245769ce0ac7e4c96c4a9ac355&dn=Double%20Life%3A%20Escort%20Secrets&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.demonii.com%3A1337%2Fannounce&tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce&tr=udp%3A%2F%2Fexodus.desync.com%3A6969%2Fannounce"
@@ -34,6 +42,14 @@
       ],
       "uploadDate": "2026-09-20 00:00",
       "fileSize": "1.3 GB"
+    },
+    {
+      "title": "FALSE NINE",
+      "uris": [
+        "https://pixeldrain.com/u/q4iesvpF"
+      ],
+      "uploadDate": "2026-09-20 00:00",
+      "fileSize": "84 MB"
     },
     {
       "title": "ONLY FARMS",
