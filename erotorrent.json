@@ -2,6 +2,14 @@
   "name": "EroTorrent",
   "downloads": [
     {
+      "title": "Wicked Island",
+      "uris": [
+        "magnet:?xt=urn:btih:2f704788ce0786a9e557c72767d206c72ad8bcaf&dn=Wicked%20Island&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.demonii.com%3A1337%2Fannounce&tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce&tr=udp%3A%2F%2Fexodus.desync.com%3A6969%2Fannounce"
+      ],
+      "uploadDate": "2026-11-17 00:00",
+      "fileSize": "7.19 GB"
+    },
+    {
       "title": "GRAND TIDDY ADVENTURES",
       "uris": [
         "https://pixeldrain.com/u/GpXXNr6y"
@@ -4200,14 +4208,6 @@
       ],
       "uploadDate": "2025-08-22 00:00",
       "fileSize": "3.5 GB"
-    },
-    {
-      "title": "Wicked Island",
-      "uris": [
-        "magnet:?xt=urn:btih:e186c5fa225b7a3ecfa82bf561a9fa49470c5223&dn=Wicked%20Island&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.demonii.com%3A1337%2Fannounce&tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce&tr=udp%3A%2F%2Fexodus.desync.com%3A6969%2Fannounce"
-      ],
-      "uploadDate": "2025-08-21 00:00",
-      "fileSize": "9.55 GB"
     },
     {
       "title": "Island Notes",
